@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>极简图标记账 - Minimalist Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        /* 轮播卡片样式 */
+        .category-card {
+            transition: all 0.5s cubic-bezier(0.2, 1, 0.3, 1);
+            transform: scale(0.8);
+            filter: grayscale(100%) opacity(0.3);
+        }
+        .category-card.active {
+            transform: scale(1.1);
+            filter: grayscale(0%) opacity(1);
+        }
+
+        #swipe-wrapper {
+            display: flex;
+            width: 400%;
+            transition: transform 0.5s cubic-bezier(0.2, 1, 0.3, 1);
+            will-change: transform;
+        }
+
+        .slide-item {
+            width: 25%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 面板通用动画 */
+        .slide-panel {
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            transform: translateY(100%);
+            position: fixed;
+            inset: 0;
+            z-index: 50;
+        }
+        .slide-panel.open {
+            transform: translateY(0);
+        }
+
+        /* 数字键盘按钮 */
+        .key-btn {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 1.25rem;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: 600;
+            transition: all 0.1s;
+        }
+        .key-btn:active {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(0.9);
+        }
+
+        /* 币种切换 */
+        .currency-switch {
+            background: #f1f5f9;
+            border-radius: 2rem;
+            padding: 4px;
+            display: inline-flex;
+            gap: 4px;
+        }
+        .currency-btn {
+            padding: 6px 16px;
+            border-radius: 1.5rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+            transition: all 0.2s;
+        }
+        .currency-btn.active {
+            background: white;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            color: #1e293b;
+        }
+        .currency-btn.inactive {
+            color: #94a3b8;
+        }
+
+        /* 日历样式 */
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+        }
+        .calendar-day {
+            aspect-ratio: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8rem;
+            border-radius: 50%;
+            transition: all 0.2s;
+            cursor: pointer;
+            position: relative;
+        }
+        .calendar-day.active {
+            background: #0f172a;
+            color: white;
+            font-weight: bold;
+        }
+        .calendar-day.has-data::after {
+            content: '';
+            position: absolute;
+            bottom: 4px;
+            width: 4px;
+            height: 4px;
+            background: #cbd5e1;
+            border-radius: 50%;
+        }
+        .calendar-day.active.has-data::after {
+            background: white;
+        }
+
+        /* 自定义弹窗 */
+        #confirm-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: rgba(0,0,0,0.4);
+            backdrop-filter: blur(4px);
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        input:focus { outline: none; }
+    </style>
+</head>
+<body class="flex flex-col h-screen text-slate-800">
+
+    <!-- 主页 -->
+    <div id="home-page" class="flex flex-col h-full">
+        <div class="px-8 pt-16 flex justify-between items-start">
+            <div>
+                <h1 class="text-3xl font-black tracking-tight">就记一下</h1>
+                <p class="text-slate-400 text-sm mt-1">左右滑动切换类别</p>
+            </div>
+            <div class="currency-switch">
+                <button onclick="setCurrency('CNY')" id="btn-CNY" class="currency-btn active">CNY</button>
+                <button onclick="setCurrency('USD')" id="btn-USD" class="currency-btn inactive">USD</button>
+            </div>
+        </div>
+
+        <div class="flex-1 relative flex flex-col justify-center overflow-hidden" id="touch-area">
+            <div id="swipe-wrapper">
+                <div class="slide-item" onclick="openInput(0)">
+                    <div class="category-card active flex flex-col items-center">
+                        <div class="w-44 h-44 bg-orange-100 rounded-[3.5rem] flex items-center justify-center text-7xl shadow-2xl shadow-orange-100">🍚</div>
+                        <span class="mt-6 font-bold text-xl text-orange-600">食物</span>
+                    </div>
+                </div>
+                <div class="slide-item" onclick="openInput(1)">
+                    <div class="category-card flex flex-col items-center">
+                        <div class="w-44 h-44 bg-blue-100 rounded-[3.5rem] flex items-center justify-center text-7xl shadow-2xl shadow-blue-100">🛒</div>
+                        <span class="mt-6 font-bold text-xl text-blue-600">超市</span>
+                    </div>
+                </div>
+                <div class="slide-item" onclick="openInput(2)">
+                    <div class="category-card flex flex-col items-center">
+                        <div class="w-44 h-44 bg-green-100 rounded-[3.5rem] flex items-center justify-center text-7xl shadow-2xl shadow-green-100">🏠</div>
+                        <span class="mt-6 font-bold text-xl text-green-600">房租</span>
+                    </div>
+                </div>
+                <div class="slide-item" onclick="openInput(3)">
+                    <div class="category-card flex flex-col items-center">
+                        <div class="w-44 h-44 bg-purple-100 rounded-[3.5rem] flex items-center justify-center text-7xl shadow-2xl shadow-purple-100">💅</div>
+                        <span class="mt-6 font-bold text-xl text-purple-600">激情消费</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="px-8 pb-12 flex justify-between items-end cursor-pointer" onclick="openStats()">
+            <div>
+                <div class="text-slate-300 text-xs font-bold uppercase tracking-wider flex items-center gap-1">
+                    今日支出 <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M9 5l7 7-7 7" /></svg>
+                </div>
+                <div class="text-3xl font-black mt-1"><span class="currency-symbol">¥</span> <span id="total-amount">0.00</span></div>
+            </div>
+            <div class="text-slate-300 text-[10px] text-right"></div>
+        </div>
+    </div>
+
+    <!-- 输入面板 -->
+    <div id="input-panel" class="slide-panel flex flex-col">
+        <div id="panel-bg" class="absolute inset-0 transition-colors duration-500"></div>
+        <div class="relative z-10 flex flex-col h-full text-white">
+            <div class="flex justify-between items-center px-8 pt-12">
+                <button onclick="closeInput()" class="w-10 h-10 flex items-center justify-center rounded-full bg-black/10 text-lg font-bold">✕</button>
+                <span id="active-cat-name" class="font-bold text-lg tracking-widest uppercase">分类</span>
+                <div class="w-10"></div>
+            </div>
+            
+            <div class="flex-1 flex flex-col justify-center items-center px-8">
+                <div class="text-8xl font-mono font-bold tracking-tighter flex items-baseline mb-4">
+                    <span class="text-3xl mr-2 opacity-40 currency-symbol">¥</span>
+                    <span id="input-display">0</span>
+                </div>
+                <div class="w-full max-w-xs">
+                    <input type="text" id="note-input" placeholder="添加备注..." 
+                        class="w-full bg-black/10 border-b-2 border-white/20 px-4 py-3 text-center text-white placeholder:text-white/40 font-medium rounded-xl">
+                </div>
+            </div>
+
+            <div class="px-6 pb-10">
+                <div class="grid grid-cols-3 gap-2">
+                    <button class="key-btn" onclick="append('1')">1</button>
+                    <button class="key-btn" onclick="append('2')">2</button>
+                    <button class="key-btn" onclick="append('3')">3</button>
+                    <button class="key-btn" onclick="append('4')">4</button>
+                    <button class="key-btn" onclick="append('5')">5</button>
+                    <button class="key-btn" onclick="append('6')">6</button>
+                    <button class="key-btn" onclick="append('7')">7</button>
+                    <button class="key-btn" onclick="append('8')">8</button>
+                    <button class="key-btn" onclick="append('9')">9</button>
+                    <button class="key-btn" onclick="append('.')">.</button>
+                    <button class="key-btn" onclick="append('0')">0</button>
+                    <button class="key-btn" onclick="del()">⌫</button>
+                    <button onclick="confirmSave()" class="col-span-3 bg-white text-slate-900 h-14 rounded-2xl font-black text-lg mt-2 active:scale-95 transition-transform shadow-xl">确认记录</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 统计面板 -->
+    <div id="stats-panel" class="slide-panel bg-slate-50 flex flex-col">
+        <div class="flex justify-between items-center px-8 pt-12 pb-6">
+            <button onclick="closeStats()" class="w-10 h-10 flex items-center justify-center rounded-full bg-slate-200 text-slate-600">✕</button>
+            <span class="font-bold text-lg">消费明细</span>
+            <button onclick="clearAllData()" class="text-red-400 text-xs font-bold">全部清空</button>
+        </div>
+        
+        <div class="flex-1 overflow-y-auto px-6 pb-10">
+            <div class="bg-white rounded-[2rem] p-5 shadow-sm mb-4 border border-slate-100">
+                <div class="flex justify-between items-center mb-4 px-2">
+                    <button onclick="changeMonth(-1)" class="text-slate-400 p-1">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
+                    </button>
+                    <span id="calendar-month-label" class="font-black text-sm uppercase tracking-widest text-slate-700">MARCH 2024</span>
+                    <button onclick="changeMonth(1)" class="text-slate-400 p-1">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
+                    </button>
+                </div>
+                <div class="calendar-grid mb-1">
+                    <div class="text-center text-[10px] font-bold text-slate-300">日</div>
+                    <div class="text-center text-[10px] font-bold text-slate-300">一</div>
+                    <div class="text-center text-[10px] font-bold text-slate-300">二</div>
+                    <div class="text-center text-[10px] font-bold text-slate-300">三</div>
+                    <div class="text-center text-[10px] font-bold text-slate-300">四</div>
+                    <div class="text-center text-[10px] font-bold text-slate-300">五</div>
+                    <div class="text-center text-[10px] font-bold text-slate-300">六</div>
+                </div>
+                <div id="calendar-days" class="calendar-grid"></div>
+            </div>
+
+            <div class="mb-6">
+                <div class="flex items-center justify-between mb-3 px-2">
+                    <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest" id="selected-date-label">今日明细</h3>
+                    <span class="text-xs font-bold text-slate-400" id="selected-date-total">¥0.00</span>
+                </div>
+                <div id="day-records-list" class="space-y-2"></div>
+            </div>
+
+            <div class="bg-slate-900 rounded-[2.5rem] p-8 text-white shadow-xl shadow-slate-200">
+                <div class="opacity-50 text-xs font-bold uppercase tracking-wider mb-1"><span id="stats-year-label">2024</span> 年度总计</div>
+                <div class="text-4xl font-black"><span class="currency-symbol">¥</span> <span id="year-total">0.00</span></div>
+                <div class="mt-8 space-y-4" id="month-breakdown"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 二次确认弹窗 -->
+    <div id="confirm-modal">
+        <div class="bg-white rounded-[2.5rem] p-8 w-full max-w-sm shadow-2xl">
+            <h3 class="text-xl font-black text-slate-900 mb-2">删除这笔记录？</h3>
+            <p class="text-slate-400 text-sm mb-8">此操作无法撤销，该笔支出将从统计中扣除。</p>
+            <div class="flex flex-col gap-2">
+                <button id="confirm-delete-btn" class="bg-red-500 text-white font-bold py-4 rounded-2xl active:scale-95 transition-transform">确认删除</button>
+                <button onclick="closeConfirmModal()" class="text-slate-400 font-bold py-3 rounded-2xl">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let activeIndex = 0;
+        let currentInput = "0";
+        let currentCurrency = localStorage.getItem('pref_currency') || 'CNY';
+        let deleteTargetId = null;
+        
+        // 数据格式：{ id, amount, category, currency, note, date }
+        let records = JSON.parse(localStorage.getItem('money_records') || '[]').map(r => ({
+            ...r,
+            date: new Date(r.date)
+        }));
+        
+        const categories = [
+            { name: "食物", color: "#f97316", bg: "bg-orange-500", tailwind: "bg-orange-100", icon: "🍚" },
+            { name: "超市", color: "#3b82f6", bg: "bg-blue-500", tailwind: "bg-blue-100", icon: "🛒" },
+            { name: "房租", color: "#22c55e", bg: "bg-green-500", tailwind: "bg-green-100", icon: "🏠" },
+            { name: "激情消费", color: "#a855f7", bg: "bg-purple-500", tailwind: "bg-purple-100", icon: "💅" }
+        ];
+
+        const wrapper = document.getElementById('swipe-wrapper');
+        const touchArea = document.getElementById('touch-area');
+        const cards = document.querySelectorAll('.category-card');
+
+        let isDragging = false;
+        let startX = 0;
+        let calendarDate = new Date(); 
+        let selectedDate = new Date(); 
+
+        window.onload = () => {
+            setCurrency(currentCurrency);
+            updateTotals();
+        };
+
+        function setCurrency(ccy) {
+            currentCurrency = ccy;
+            localStorage.setItem('pref_currency', ccy);
+            document.getElementById('btn-CNY').className = `currency-btn ${ccy === 'CNY' ? 'active' : 'inactive'}`;
+            document.getElementById('btn-USD').className = `currency-btn ${ccy === 'USD' ? 'active' : 'inactive'}`;
+            document.querySelectorAll('.currency-symbol').forEach(el => el.innerText = ccy === 'CNY' ? '¥' : '$');
+            updateTotals();
+            renderCalendar();
+            renderSelectedDayRecords();
+        }
+
+        function handleStart(e) {
+            isDragging = true;
+            startX = (e.type.includes('mouse')) ? e.pageX : e.touches[0].clientX;
+            wrapper.style.transition = 'none';
+        }
+        function handleMove(e) {
+            if (!isDragging) return;
+            const currentX = (e.type.includes('mouse')) ? e.pageX : e.touches[0].clientX;
+            const diff = currentX - startX;
+            const movePercent = (activeIndex * -25) + (diff / window.innerWidth * 25);
+            wrapper.style.transform = `translateX(${movePercent}%)`;
+        }
+        function handleEnd(e) {
+            if (!isDragging) return;
+            isDragging = false;
+            const endX = (e.type.includes('mouse')) ? e.pageX : e.changedTouches[0].clientX;
+            const diff = endX - startX;
+            wrapper.style.transition = 'transform 0.5s cubic-bezier(0.2, 1, 0.3, 1)';
+            if (Math.abs(diff) > window.innerWidth * 0.15) {
+                if (diff > 0 && activeIndex > 0) activeIndex--;
+                else if (diff < 0 && activeIndex < 3) activeIndex++;
+            }
+            updateHomeUI();
+        }
+
+        touchArea.addEventListener('mousedown', handleStart);
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('mouseup', handleEnd);
+        touchArea.addEventListener('touchstart', handleStart);
+        touchArea.addEventListener('touchmove', handleMove);
+        touchArea.addEventListener('touchend', handleEnd);
+
+        function updateHomeUI() {
+            wrapper.style.transform = `translateX(-${activeIndex * 25}%)`;
+            cards.forEach((c, i) => c.classList.toggle('active', i === activeIndex));
+        }
+
+        function openInput(index) {
+            if (isDragging) return; 
+            activeIndex = index;
+            const cat = categories[index];
+            document.getElementById('active-cat-name').innerText = cat.name;
+            document.getElementById('panel-bg').className = `absolute inset-0 transition-colors duration-500 ${cat.bg}`;
+            document.getElementById('input-panel').classList.add('open');
+            currentInput = "0";
+            document.getElementById('input-display').innerText = "0";
+            document.getElementById('note-input').value = "";
+        }
+        function closeInput() { document.getElementById('input-panel').classList.remove('open'); }
+
+        function openStats() {
+            selectedDate = new Date();
+            calendarDate = new Date();
+            updateTotals();
+            renderCalendar();
+            renderSelectedDayRecords();
+            document.getElementById('stats-panel').classList.add('open');
+        }
+        function closeStats() { document.getElementById('stats-panel').classList.remove('open'); }
+
+        function append(num) {
+            if (currentInput === "0" && num !== ".") currentInput = num;
+            else {
+                if (num === "." && currentInput.includes(".")) return;
+                if (currentInput.length >= 8) return;
+                currentInput += num;
+            }
+            document.getElementById('input-display').innerText = currentInput;
+        }
+        function del() {
+            currentInput = currentInput.slice(0, -1);
+            if (currentInput === "") currentInput = "0";
+            document.getElementById('input-display').innerText = currentInput;
+        }
+
+        function confirmSave() {
+            const val = parseFloat(currentInput);
+            const note = document.getElementById('note-input').value.trim();
+            if (val > 0) {
+                records.push({ 
+                    id: Date.now() + Math.random(),
+                    amount: val, 
+                    category: categories[activeIndex].name, 
+                    currency: currentCurrency,
+                    note: note, 
+                    date: new Date() 
+                });
+                saveToStorage();
+                updateTotals();
+                closeInput();
+            }
+        }
+
+        function saveToStorage() {
+            localStorage.setItem('money_records', JSON.stringify(records));
+        }
+
+        function clearAllData() {
+            if(confirm('确定要清空所有历史数据吗？')) {
+                records = [];
+                saveToStorage();
+                updateTotals();
+                renderCalendar();
+                renderSelectedDayRecords();
+                closeStats();
+            }
+        }
+
+        // --- 删除功能核心逻辑 ---
+        function askDelete(id) {
+            deleteTargetId = id;
+            document.getElementById('confirm-modal').style.display = 'flex';
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirm-modal').style.display = 'none';
+            deleteTargetId = null;
+        }
+
+        document.getElementById('confirm-delete-btn').onclick = () => {
+            if (deleteTargetId) {
+                records = records.filter(r => r.id !== deleteTargetId);
+                saveToStorage();
+                updateTotals();
+                renderCalendar();
+                renderSelectedDayRecords();
+                closeConfirmModal();
+            }
+        };
+
+        function renderCalendar() {
+            const year = calendarDate.getFullYear();
+            const month = calendarDate.getMonth();
+            const firstDay = new Date(year, month, 1).getDay();
+            const daysInMonth = new Date(year, month + 1, 0).getDate();
+            const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+            
+            document.getElementById('calendar-month-label').innerText = `${monthNames[month]} ${year}`;
+            const daysContainer = document.getElementById('calendar-days');
+            daysContainer.innerHTML = '';
+
+            for (let i = 0; i < firstDay; i++) daysContainer.innerHTML += '<div></div>';
+            for (let d = 1; d <= daysInMonth; d++) {
+                const dateStr = new Date(year, month, d).toDateString();
+                const isSelected = selectedDate.toDateString() === dateStr;
+                const hasData = records.some(r => r.date.toDateString() === dateStr && r.currency === currentCurrency);
+                const dayEl = document.createElement('div');
+                dayEl.className = `calendar-day ${isSelected ? 'active' : ''} ${hasData ? 'has-data' : ''}`;
+                dayEl.innerText = d;
+                dayEl.onclick = () => {
+                    selectedDate = new Date(year, month, d);
+                    renderCalendar();
+                    renderSelectedDayRecords();
+                };
+                daysContainer.appendChild(dayEl);
+            }
+        }
+
+        function changeMonth(step) {
+            calendarDate.setMonth(calendarDate.getMonth() + step);
+            renderCalendar();
+        }
+
+        function renderSelectedDayRecords() {
+            const list = document.getElementById('day-records-list');
+            const symbol = currentCurrency === 'CNY' ? '¥' : '$';
+            const dayRecords = records.filter(r => r.date.toDateString() === selectedDate.toDateString() && r.currency === currentCurrency);
+            
+            document.getElementById('selected-date-label').innerText = selectedDate.toDateString() === new Date().toDateString() ? "今日明细" : `${selectedDate.getMonth() + 1}月${selectedDate.getDate()}日 明细`;
+            document.getElementById('selected-date-total').innerText = `${symbol}${dayRecords.reduce((s, r) => s + r.amount, 0).toFixed(2)}`;
+
+            if (dayRecords.length === 0) {
+                list.innerHTML = `<div class="text-center py-6 text-slate-300 text-[10px] font-bold tracking-widest uppercase">暂无数据</div>`;
+                return;
+            }
+
+            list.innerHTML = dayRecords.map(r => {
+                const cat = categories.find(c => c.name === r.category);
+                return `
+                    <div class="bg-white p-4 rounded-2xl flex justify-between items-center shadow-sm border border-slate-50 active:scale-[0.98] transition-transform">
+                        <div class="flex items-center gap-3 overflow-hidden">
+                            <div class="w-10 h-10 shrink-0 ${cat?.tailwind || 'bg-slate-100'} rounded-xl flex items-center justify-center text-xl">
+                                ${cat?.icon || '💰'}
+                            </div>
+                            <div class="overflow-hidden">
+                                <div class="font-bold text-sm text-slate-700 truncate">${r.note || r.category}</div>
+                                <div class="text-[10px] text-slate-300 font-bold tracking-tight">
+                                    ${r.date.getHours().toString().padStart(2, '0')}:${r.date.getMinutes().toString().padStart(2, '0')} ${r.note ? '· ' + r.category : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-4 shrink-0">
+                            <div class="font-black text-slate-800">${symbol}${r.amount.toFixed(2)}</div>
+                            <button onclick="askDelete(${r.id})" class="p-2 text-slate-200 hover:text-red-400 transition-colors">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-4v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateTotals() {
+            const now = new Date();
+            const symbol = currentCurrency === 'CNY' ? '¥' : '$';
+            const currentCcyRecords = records.filter(r => r.currency === currentCurrency);
+
+            const todaySum = currentCcyRecords
+                .filter(r => r.date.toDateString() === now.toDateString())
+                .reduce((s, r) => s + r.amount, 0);
+            document.getElementById('total-amount').innerText = todaySum.toFixed(2);
+
+            const yearSum = currentCcyRecords
+                .filter(r => r.date.getFullYear() === now.getFullYear())
+                .reduce((s, r) => s + r.amount, 0);
+            document.getElementById('year-total').innerText = yearSum.toFixed(2);
+            document.getElementById('stats-year-label').innerText = now.getFullYear();
+
+            const breakdownContainer = document.getElementById('month-breakdown');
+            breakdownContainer.innerHTML = categories.map(cat => {
+                const catSum = currentCcyRecords
+                    .filter(r => r.category === cat.name && r.date.getFullYear() === now.getFullYear())
+                    .reduce((s, r) => s + r.amount, 0);
+                const percent = yearSum > 0 ? (catSum / yearSum * 100) : 0;
+                return `
+                    <div>
+                        <div class="flex justify-between text-[11px] mb-2">
+                            <span class="font-bold text-slate-400">${cat.name}</span>
+                            <span class="font-mono text-white/80">${symbol}${catSum.toFixed(2)}</span>
+                        </div>
+                        <div class="w-full bg-white/10 h-1.5 rounded-full overflow-hidden">
+                            <div class="${cat.bg} h-full transition-all duration-700" style="width: ${percent}%"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+    </script>
+</body>
+</html>
